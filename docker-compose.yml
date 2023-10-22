@@ -1,0 +1,161 @@
+version: "3.9"
+
+networks:
+  boilerplate-network:
+    driver: bridge
+    
+services:
+  db:
+    container_name: ${COMPOSE_PROJECT_NAME}_db
+    image: ${DB_IMAGE}
+    command: --default-authentication-plugin=mysql_native_password
+    volumes:
+      - ./server/logs/mysql:/var/log/mysql
+      - ./server/mysql/db_data:/var/lib/mysql
+      - ./server/mysql/docker_mysql_init/init.sql:/docker-entrypoint-initdb.d/init.sql
+      #- ./backup/DB/dump.sql:/docker-entrypoint-initdb.d
+      #- ./backup/DB:/home
+    restart: unless-stopped
+    ports:
+      - "${DB_PORT}"
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${DATABASE_NAME}
+      MYSQL_USER: ${DATABASE_USER}
+      MYSQL_PASSWORD: ${DATABASE_PASSWORD}
+    networks:
+      - boilerplate-network
+
+  wordpress:
+    container_name: ${COMPOSE_PROJECT_NAME}_wp
+    depends_on:
+      - db
+    build:
+      context: ./server/wordpress/
+      dockerfile: wordpress-dev
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ./server/configs/php/wordpress.ini:/usr/local/etc/php/conf.d/wordpress.ini
+      #- ./server/php/conf.d/xdebug.ini:/usr/local/etc/php/conf.d/xdebug.ini
+      #- ./server/php/conf.d/error_reporting.ini:/usr/local/etc/php/conf.d/error_reporting.ini
+      - ./server/logs/php:/var/log/php-fpm
+      - ./project_data:/var/www/html
+    restart: unless-stopped
+    ports:
+      - "9000:9000"
+    environment:
+      WORDPRESS_DB_HOST: ${WP_DB_HOST}
+      WORDPRESS_DB_USER: ${DATABASE_USER}
+      WORDPRESS_DB_PASSWORD: ${DATABASE_PASSWORD}
+      WORDPRESS_DB_NAME: ${DATABASE_NAME}
+      WORDPRESS_TABLE_PREFIX: ${WORDPRESS_TABLE_PREFIX}
+      WORDPRESS_DB_CHARSET: ${WORDPRESS_DB_CHARSET}
+      WORDPRESS_DB_COLLATE: ${WORDPRESS_DB_COLLATE}
+      WORDPRESS_DEBUG: ${WORDPRESS_DEBUG}
+      WORDPRESS_CONFIG_EXTRA: |
+        define( 'WP_ENVIRONMENT_TYPE', 'local' );
+        define( 'WP_MEMORY_LIMIT', '128M');
+        define( 'WP_MAX_MEMORY_LIMIT', '512M');
+        #define( 'FS_METHOD', 'direct' );
+        #define('ALLOW_UNFILTERED_UPLOADS', true);      
+        define( 'WP_DEBUG_LOG', true );
+        define( 'WP_DEBUG_DISPLAY', false );
+        @ini_set( 'display_errors', 0 );
+        define( 'SCRIPT_DEBUG', false );
+        define( 'WP_AUTO_UPDATE_CORE', false );
+        /* Multisite */
+        define('WP_ALLOW_MULTISITE', true );
+        #define('MULTISITE', true);
+        #define('SUBDOMAIN_INSTALL', false);
+        #define('DOMAIN_CURRENT_SITE', 'dev.wp.local');
+        #define('PATH_CURRENT_SITE', '/');
+        #define('SITE_ID_CURRENT_SITE', 1);
+        #define('BLOG_ID_CURRENT_SITE', 1);
+        #define( 'WP_DEFAULT_THEME', 'your-theme' );
+        /*Redis*/
+        #define( 'WP_REDIS_CLIENT', 'predis' );
+        #define( 'WP_REDIS_SCHEME', 'tcp' );
+        #define( 'WP_REDIS_HOST', 'redis' );
+        #define( 'WP_REDIS_PORT', '6379' );
+        #define( 'WP_REDIS_PASSWORD', 'xxxxxxxxxxxxxxx' );
+        #define( 'WP_REDIS_DATABASE', '0' );
+        #define( 'WP_REDIS_MAXTTL', '21600' );
+        #define( 'WP_CACHE_KEY_SALT', 'xx_ ');
+        #define( 'WP_REDIS_SELECTIVE_FLUSH', 'xx_ ');
+    networks:
+      - boilerplate-network
+      
+  nginx:
+    image: nginx:stable
+    container_name: ${COMPOSE_PROJECT_NAME}_nginx
+    restart: unless-stopped
+    depends_on:
+      - wordpress
+    ports:
+      - "${WP_PORT}"
+      - "${WP_PORT_SSL}"
+    volumes:
+      - ./project_data:/var/www/html
+      - ${NGINX_CONF}:/etc/nginx/conf.d
+      - ${NGINX_SSL_CERTS}:/etc/ssl:ro
+      - ${NGINX_LOGS}:/var/log/nginx 
+    networks:
+      - boilerplate-network
+
+  redis:
+    container_name: ${COMPOSE_PROJECT_NAME}_redis
+    image: redis:alpine
+    restart: unless-stopped
+    ports:
+      - '6379:6379'
+    networks:
+      - boilerplate-network
+ 
+  #redis-commander:
+    #container_name: ${COMPOSE_PROJECT_NAME}_redis_commander
+    #hostname: redis-commander
+    #image: rediscommander/redis-commander:latest
+    #restart: unless-stopped
+    #environment:
+     # - REDIS_HOSTS=local:redis:6379
+    #ports:
+    #  - "8081:8081"
+    #networks:
+    #  - boilerplate-network
+      
+  #mailhog:
+    #container_name: ${COMPOSE_PROJECT_NAME}_mailhog
+    #image: mailhog/mailhog
+    #restart: unless-stopped
+   # ports:
+    #  - "1025:1025"
+    #  - "8025:8025"
+   # networks:
+    #  - boilerplate-network
+      
+  #certbot:
+    #container_name: ${COMPOSE_PROJECT_NAME}_certbot
+    #depends_on:
+      #- wordpress
+    #image: certbot/certbot
+    #volumes:
+     # - ./server/certbot-etc:/etc/letsencrypt
+     # - ./server/logs/var-log-letsencrypt:/var/log/letsencrypt
+     # - ./project_data:/var/www/html
+    #command: certonly --webroot --webroot-path=/var/www/html --email dev@dev.dev --agree-tos --no-eff-email --staging -d dev.wp.local
+  
+  phpmyadmin:
+    container_name: ${COMPOSE_PROJECT_NAME}_pma
+    image: phpmyadmin/phpmyadmin:latest
+    links:
+      - db:db
+    ports:
+      - "${PMA_PORT}"
+    environment:
+      - PMA_HOST=${WP_DB_HOST}
+      - PMA_USER=${MYSQL_ROOT}
+      #- PMA_PASSWORD=${MYSQL_ROOT_PASSWORD}
+      - UPLOAD_LIMIT=${PMA_UPLOAD_LIMIT}
+    networks:
+      - boilerplate-network
