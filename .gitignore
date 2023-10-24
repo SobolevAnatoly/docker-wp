@@ -3,27 +3,20 @@
 
 # except the important
 !backup/
-!docs/
-!project_data/
-!server/
-
-# ignore everything in the important directory, except:
 backup/*
 !backup/db/
 backup/db/*
+
+!docs/
 docs/*
-!docs/project/public/
-server/*
-!server/configs/
-!server/wordpress/
-!server/mysql/
-server/mysql/db_data/*
-!server/ssl/
-server/ssl/*
-!server/certbot-etc/
+!docs/public/
+
+!project_data/
+
+!server/
 server/certbot-etc/*
-!server/logs/
-server/logs/*
+server/mysql/db_data/*
+server/ssl/*
 
 # ignore all files starting with . or ~
 .*
@@ -67,11 +60,13 @@ Thumbs.db
 !docker-compose.yml
 !.env
 !.gitignore
+!.gitkeep
 !.editorconfig
 !.code-workspace
 !README.md
 !CHANGELOG.md
 !composer.json
+!*.code-workspace
 
 # add your own entries here
 !server/mysql/docker_mysql_init/init.sql
